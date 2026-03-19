@@ -1,5 +1,8 @@
 ## AutoFlow AI — Agentic AI for Autonomous Enterprise Workflows
 
+AutoFlow AI converts raw meeting notes into an executable enterprise workflow end-to-end. It extracts tasks, plans dependencies, executes with SLA-based monitoring, self-corrects via tiered remediation (including Chaos Engineering), and records every decision in an audit trail.
+
+See the Architecture diagram below for the full data flow and error-handling logic.
 
 ## Public Repo
 
@@ -38,7 +41,48 @@ Frontend
   └─ GET /logs (renders provenance audit trail)
 ```
 
-### 2. Agent Roles (What each step does)
+### 2. Component Diagram (Logical)
+
+```text
+             ┌───────────────────┐
+             │   React Frontend  │
+             │  - Meeting Input  │
+             │  - Tasks View     │
+             │  - Health Chip    │
+             │  - Audit Log      │
+             └────────┬──────────┘
+                      │ HTTP (JSON)
+                      ▼
+           ┌────────────────────────┐
+           │     FastAPI Backend    │
+           │  (main app + router)   │
+           └────────┬───────────────┘
+                    │
+         ┌──────────┼───────────────────────────────┐
+         ▼          ▼                               ▼
+ ┌────────────┐┌──────────────┐             ┌────────────────┐
+ │ routes/    ││ core/        │             │ services/      │
+ │ workflow_  ││ - store      │             │ - GroqService  │
+ │ routes.py  ││ - state      │             └────────────────┘
+ └─────┬──────┘│ - monitor    │
+       │       │ - executor   │
+       │       │ - orchestrator
+       │       │
+       │       │
+       │       └──────────────┘
+       │                ▲
+       ▼                │
+ ┌─────────────────────────────┐
+ │ agents/                     │
+ │ - understanding_agent.py    │
+ │ - planning_agent.py         │
+ │ - decision_agent.py         │
+ │ (monitoring/execution live  │
+ │  in core for simplicity)    │
+ └─────────────────────────────┘
+```
+
+### 3. Agent Roles (What each step does)
 
 - `understanding_agent()` converts meeting notes into structured `tasks` (title, owner, priority, intent, etc.).
 - `planning_agent()` builds logical dependencies and marks critical-path tasks.
@@ -48,7 +92,7 @@ Frontend
 - `action_agent()` applies decisions to the in-memory workflow state and appends audit entries.
 - `verification_agent()` ensures the system did not make health worse; if it did, `rollback_agent()` restores a pre-change snapshot.
 
-### 3. Tool Integrations
+### 4. Tool Integrations
 
 - Groq LLM integration: used for structured extraction, dependency analysis, and remediation recommendations.
 - FastAPI endpoints:
@@ -58,7 +102,7 @@ Frontend
   - `GET /logs`: return the immutable audit log.
 - Frontend: the Sprint Board and Task Matrix are rendered from `/workflow`; audit trail from `/logs`.
 
-### 4. Error Handling Logic (Demo-safe)
+### 5. Error Handling Logic (Demo-safe)
 
 - LLM unavailable/misconfigured: automatically falls back to deterministic parsing and rule-based remediation.
 - Incomplete/bad LLM output:
