@@ -114,6 +114,38 @@ Frontend
  └─────────────────────────────┘
 ```
 
+#### UI Screenshots (from `images/`)
+
+**1) Agentic task classification + monitoring**
+
+![Agentic task classification and monitoring](images/agentic%20task%20classification%20,%20mointoring.png)
+
+This screenshot shows the end-to-end flow: meeting input, the generated Sprint Board columns (`TODO`, `IN PROGRESS`, `BLOCKED`, `DONE`), and how tasks get classified and tracked automatically by the monitoring loop.
+
+**2) Full historical audit trace**
+
+![Agents history audit trace](images/agents_history.png)
+
+This is the provenance trail that records what each agent did (planning, execution, monitoring, decision, action). It demonstrates auditability: every remediation decision is logged with reasoning.
+
+**3) Chat assistant (explain/verify workflow)**
+
+![Chatbot assistant](images/chatbot.png)
+
+The built-in assistant can answer about the workflow, explain decisions, and reference what happened in the background. It reinforces minimal human involvement by reducing follow-up questions.
+
+**4) Landing / meeting input experience**
+
+![Landing page](images/landing%20%282%29.png)
+
+This is the primary entry screen: users paste meeting notes, choose scenario chips, and trigger workflow generation. It’s designed to support the demo narrative from discussion to execution and optimization.
+
+**5) Task assignment via agent-generated matrix**
+
+![Task assignment by agents](images/task%20assginment%20by%20agents.png)
+
+This screenshot shows the Sprint Board/Task Matrix view with structured fields (status, epic, task name, priority, deadline, and assignee). It confirms owner assignment and scheduling logic used by the orchestration engine.
+
 ### 3. Agent Roles (What each step does)
 
 - `understanding_agent()` converts meeting notes into structured `tasks` (title, owner, priority, intent, etc.).
