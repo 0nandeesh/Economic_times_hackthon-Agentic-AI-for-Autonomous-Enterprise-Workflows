@@ -53,6 +53,28 @@ React Frontend (dashboard)
  └─────────────────────────────┘
 ```
 
+### 2.1 Role Communication (Data Flow Figure)
+
+```text
+User/UI
+  │  (POST /process-meeting with raw notes)
+  ▼
+backend/main.py
+  ├─ understanding_agent()  ──► parses tasks (Groq or deterministic bullet parsing)
+  ├─ planning_agent()       ──► computes dependencies + critical path flags
+  ├─ execution_agent()      ──► moves eligible tasks into "in_progress"
+  └─ monitoring_cycle()
+       ├─ monitoring_agent()  ──► derives issues (delayed, missing owner, blocked, overload, stalls)
+       ├─ decision_agent()    ──► creates remediation actions (Groq + deterministic fallback)
+       ├─ action_agent()      ──► mutates task owners/statuses + optionally spawns mitigation tasks
+       ├─ verification_agent()──► if health degraded => rollback_agent()
+       └─ build_workflow_summary() + log_action() (audit + health telemetry)
+
+Frontend
+  ├─ GET /workflow  (renders Sprint Board + Task Matrix)
+  └─ GET /logs      (renders audit trail)
+```
+
 ### 3. Agent Roles and Communication
 
 - **Understanding Agent (`agents/understanding_agent.py`)**
@@ -134,37 +156,56 @@ React Frontend (dashboard)
     - Health chip and score.
     - Ordered audit log of multi-agent decisions.
 
-### 5. Error Handling and Failure Modes
+### 5. Error Handling Logic (Deterministic Fallback + Verification/Rollback)
 
-- **LLM Unavailable or Misconfigured**
-  - `GroqService.is_configured()` returns `False` if no API key.
-  - Understanding / Decision agents detect this and **fall back** to deterministic heuristics.
-  - System still works end-to-end without LLM, preserving robustness.
+AutoFlow is designed to be demo-safe: when the LLM is unavailable, incomplete, or wrong, the system reverts to deterministic parsing and then uses health-based verification to prevent bad mutations.
+
+- **LLM Unavailable / Misconfigured**
+  - When Groq is missing/unreachable, agents automatically use heuristic parsing and rule-based remediation.
+  - The same end-to-end API calls still work: `POST /process-meeting`, `POST /simulate-delay`, `POST /inject-exception`.
 
 - **LLM Response Parse Errors**
-  - When JSON parsing of Groq responses fails:
-    - Exceptions are caught.
-    - Agents log an `AuditLog` entry describing the failure.
-    - They revert to rule-based fallback behavior for that cycle.
+  - If Groq returns invalid JSON or parsing fails:
+    - exceptions are caught,
+    - the system records an audit entry,
+    - the cycle falls back to heuristic extraction / remediation.
+
+- **Incomplete Task Extraction (Groq truncation)**
+  - For multi-bullet inputs, extraction is intentionally made deterministic:
+    - if there are multiple bullet lines (>= 2), the Understanding step skips Groq and uses bullet parsing directly.
+  - If Groq extraction returns fewer tasks than the number of detected bullet lines, the system falls back to the heuristic parser (and logs `bullet_count_mismatch`).
+
+- **Missing Owner Handling**
+  - Monitoring detects tasks where `owner` is empty/`None` and flags them as `missing_owner_tasks`.
+  - The Decision Agent forces a `reassign` action for these tasks (instead of “extend deadline”), and infers a role from title keywords:
+    - testing/QA/quality -> `Testing`
+    - design/creative/UI/UX -> `Design Team`
+    - deploy/deployment/release/ship -> `Deployment`
+    - marketing/campaign/ads -> `Marketing`
+  - The Action Agent sanitizes invalid `recommended_owner` values so the sprint board never renders “No team member …” style placeholders.
+
+- **Health-Based Safety Rollback**
+  - After Action Agent mutations, a verification step compares workflow health before vs. after remediation.
+  - If health degraded, the system restores a pre-mutation snapshot via the Rollback Agent (and records the rollback in the audit trail).
 
 - **Workflow Errors**
-  - If a task cannot be found for a decision, Action Agent skips it and logs an error-like audit entry.
-  - Deadlines and statuses are recomputed every monitoring cycle, so transient issues are self-healing once input is corrected.
+  - If the Action Agent cannot find the task id referenced in a decision, it skips the mutation and continues.
+  - The monitoring cycle recomputes SLA/delay/health so transient issues self-heal on the next sweep.
 
 - **Frontend/API Errors**
-  - Frontend shows error banners when API calls fail.
-  - Backend returns standard HTTP error responses (via FastAPI) if something goes wrong before the agents run.
+  - Frontend surfaces API failures.
+  - Backend uses FastAPI request/response validation and returns standard HTTP errors when a call fails before agents execute.
 
-### 6. Monitoring Loop Summary
+### 6. Monitoring & Remediation Loop Summary
 
-At the heart of the architecture is a continuous monitoring loop, implemented in `core/orchestrator.py`:
+At the heart of the architecture is the health sweep + remediation loop (implemented in `backend/main.py` via `monitoring_cycle()`):
 
 ```text
 monitoring_cycle():
-    issues = Monitoring Agent → scan workflow
-    decisions = Decision Agent → propose actions (Groq + fallback)
-    Action Agent → apply decisions to WorkflowState
-    Audit Agent → log everything
+    issues = monitoring_agent(state) → scan workflow (delays, missing owners, blocked, overload, stalls)
+    decisions = decision_agent(issues, state) → propose remediation actions (Groq + deterministic fallback)
+    action_agent(decisions, state) → mutate owners/status/deadlines/spawn mitigation
+    build_workflow_summary(state) → compute summary + write audit telemetry
 ```
 
 This loop is called:
