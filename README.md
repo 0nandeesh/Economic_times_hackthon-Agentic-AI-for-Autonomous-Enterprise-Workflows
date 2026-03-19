@@ -4,6 +4,38 @@ AutoFlow AI converts raw meeting notes into an executable enterprise workflow en
 
 See the Architecture diagram below for the full data flow and error-handling logic.
 
+## Problem Statement Alignment (Ownership + Self-Correction + Auditability)
+
+AutoFlow AI is a demo-safe, multi-agent system designed to take ownership of complex, multi-step enterprise processes end-to-end. It turns raw meeting notes into an executable workflow, continuously detects failures and process drift (delays, stalls, blocked steps, missing owners, and imminent SLA risks), and self-corrects using tiered remediation. The system is built for minimal human involvement while keeping a fully auditable trail of every decision it makes.
+
+## What We Built (Required Capabilities)
+
+- Process orchestration agents that manage business workflows like procurement lifecycles and operational delivery using an internal task dependency graph and state transitions.
+- Meeting intelligence systems that extract decisions and tasks, infer or assign owners, track completion state, and resolve stalls without manual follow-up.
+- Multi-agent collaboration setups where specialized steps (understanding, planning, execution, monitoring, decisioning, action, verification, rollback) work together to complete the process.
+- Workflow health monitors that catch process drift and predict bottlenecks early, then reroute/escalate before SLA breaches become critical.
+
+## Depth of Autonomy (Minimal Human Involvement)
+
+After a workflow is generated, the engine runs a monitoring/remediation loop and applies fixes autonomously:
+
+- Tier 0: extend deadlines to buy time for clarification.
+- Tier 1: reassign to a better-fit owner to keep the workflow moving.
+- Tier 2: split failing tasks into parallelizable subtasks (true workflow restructuring).
+- Tier 3: hard escalation when repeated mitigation attempts fail.
+
+If health degrades after a remediation attempt, the system verifies and rolls back to a pre-mutation snapshot to prevent “bad fixes”.
+
+## Auditability (Every Decision Logged)
+
+All agent actions are recorded in an immutable audit trail:
+
+- Backend endpoint `GET /logs` returns the provenance log.
+- Each task stores an `audit_trail` showing what happened and why.
+- The verification/rollback path also records when and why a rollback occurred.
+
+This gives you complete traceability for every decision the swarm makes during SLA risk mitigation.
+
 ## Public Repo
 
 - GitHub: [0nandeesh/Economic_times_hackthon-Agentic-AI-for-Autonomous-Enterprise-Workflows](https://github.com/0nandeesh/Economic_times_hackthon-Agentic-AI-for-Autonomous-Enterprise-Workflows.git)
@@ -120,6 +152,17 @@ Frontend
 - Safety rollback:
   - After actions, verification checks health before vs. after.
   - If health degrades, rollback restores the snapshot and logs the rollback event.
+
+## Workflow Health Monitoring (Drift + Bottleneck Prediction)
+
+The `monitoring_agent` scans the live workflow state and flags issues that indicate process drift or impending SLA failure:
+
+- Delayed tasks (deadline passed) are marked as `delayed`.
+- Tasks with missing owners are flagged as `missing_owner_tasks` so the system can reassign automatically.
+- Stalls are detected from lack of status updates.
+- Overload detection and critical-path sensitivity drive a quantitative `health_score`.
+
+Those issues then feed the `decision_agent`, which chooses the next self-correction action (Groq-assisted when available, deterministic fallback otherwise) so remediation happens before risk becomes a hard breach.
 
 ## Impact Model (Quantified Business Estimate)
 
